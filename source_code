@@ -1,0 +1,36 @@
+# ai_disease_prediction.py 
+ 
+import pandas as pd import numpy as np import seaborn as sns import matplotlib.pyplot as plt 
+from sklearn.model_selection import train_test_split, GridSearchCV from sklearn.preprocessing import StandardScaler from sklearn.ensemble import RandomForestClassifier from sklearn.linear_model import LogisticRegression from xgboost import XGBClassifier 
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score from flask import Flask, request, jsonify import joblib 
+ 
+# Load dataset 
+url = "https://raw.githubusercontent.com/jbrownlee/Datasets/master/pima-indians-diabetes.data.csv" column_names = ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 
+                'BMI', 'DiabetesPedigreeFunction', 'Age', 'Outcome'] data = pd.read_csv(url, names=column_names) 
+ 
+# Preprocessing 
+X = data.drop('Outcome', axis=1) y = data['Outcome'] scaler = StandardScaler() X_scaled = scaler.fit_transform(X) 
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42) 
+ 
+# Model Training rf = RandomForestClassifier(random_state=42) xgb = XGBClassifier(eval_metric='logloss') 
+log_reg = LogisticRegression(max_iter=1000) 
+ 
+models = {'RandomForest': rf, 'XGBoost': xgb, 'LogisticRegression': log_reg} 
+ 
+best_model = None 
+best_score = 0 
+ 
+for name, model in models.items():     model.fit(X_train, y_train)     y_pred = model.predict(X_test)     score = roc_auc_score(y_test, y_pred)     print(f"\n{name} Classification Report:\n", classification_report(y_test, y_pred))     if score > best_score:         best_score = score 
+        best_model = model 
+ 
+# Save best model 
+joblib.dump(best_model, 'best_model.pkl') 
+joblib.dump(scaler, 'scaler.pkl') 
+ 
+# Deploy with Flask 
+app = Flask(__name__) 
+ 
+@app.route('/predict', methods=['POST']) def predict(): 
+    data = request.get_json(force=True)     features = np.array([list(data.values())])     scaler = joblib.load('scaler.pkl')     model = joblib.load('best_model.pkl')     scaled_features = scaler.transform(features)     prediction = model.predict(scaled_features)     return jsonify({'prediction': int(prediction[0])}) 
+ 
+if __name__ == '__main__':     app.run(debug=True) 
